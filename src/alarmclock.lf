@@ -1,0 +1,55 @@
+target Cpp {
+  keepalive: true
+}
+
+public preamble {=
+  #include <functional>
+  #include <memory>
+  #include <string>
+  #include <iostream>
+  
+  struct Event {
+    std::string message_;
+    unsigned int time_stamp_;
+  };
+=}
+
+reactor Trigger {
+  input event: std::string;
+  
+  reaction(event) {=
+    if(event.is_present()){
+      std::cout << "Triggering Event: " << *(event.get().get()) << std::endl;
+    }
+  =}
+}
+
+reactor Filter {
+  trigger = new Trigger();
+  input event: Event;
+
+  reaction (event) -> trigger.event {=
+    std::cout << "Checking Event !" << std::endl;
+    if ( event.is_present() ){
+      auto unix_time = (event.get().get()->time_stamp_);
+
+      if( std::chrono::steady_clock::now().time_since_epoch().count() > unix_time ){
+        trigger.event.set(event.get().get()->message_);
+      }
+    }
+  =}
+}
+
+
+main reactor alarmclock {
+  #trigger.event <- 3; 
+  filter = new Filter();
+  reaction(startup) -> filter.event {=
+    std::cout << "Starting Alarm Clock Reactor !" << std::endl;
+    Event e{
+      std::string("Test"),
+      9000
+    };
+    filter.event.set(e);
+  =}
+}
