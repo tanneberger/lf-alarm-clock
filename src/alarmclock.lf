@@ -1,55 +1,102 @@
 target Cpp {
-  keepalive: true
+    keepalive: true
 }
 
 public preamble {=
-  #include <functional>
-  #include <memory>
-  #include <string>
-  #include <iostream>
-  
-  struct Event {
-    std::string message_;
-    unsigned int time_stamp_;
-  };
+    #include <functional>
+    #include <memory>
+    #include <string>
+    #include <iostream>
+
+    struct Event {
+        std::string message_;
+        unsigned int time_stamp_;
+    };
 =}
 
 reactor Trigger {
-  input event: std::string;
-  
-  reaction(event) {=
-    if(event.is_present()){
-      std::cout << "Triggering Event: " << *(event.get().get()) << std::endl;
-    }
-  =}
+    input event: std::string;
+    reaction(event) {=
+        if(event.is_present()){
+            std::cout << "Triggering Event: " << *(event.get().get()) << std::endl;
+        }
+    =}
 }
 
 reactor Filter {
-  trigger = new Trigger();
-  input event: Event;
+    trigger = new Trigger();
+    input events: std::vector<Event>;
+    output updated: std::vector<std::size_t>;
+    //state removed_indices: std::vector
 
-  reaction (event) -> trigger.event {=
-    std::cout << "Checking Event !" << std::endl;
-    if ( event.is_present() ){
-      auto unix_time = (event.get().get()->time_stamp_);
+    reaction (events) -> trigger.event {=
+        // lambda which checks if a given event needs to execute
+        // and than triggers the event
+        auto lambda_trigger = [=](const Event& event){
+            auto unix_time = (event.time_stamp_);
 
-      if( std::chrono::steady_clock::now().time_since_epoch().count() > unix_time ){
-        trigger.event.set(event.get().get()->message_);
-      }
-    }
-  =}
+            if( std::chrono::steady_clock::now().time_since_epoch().count() > unix_time ){
+                trigger.event.set(event.message_);
+                return true;
+            }
+            return false;
+        };
+
+        // list of element which can be removed in the next iteration
+        std::vector<std::size_t> removed_indices;
+        if ( events.is_present() ){
+            std::size_t index = 0;
+            for(const Event& event: *events.get().get()) {
+                if (lambda_trigger(event)){
+                    removed_indices.push_back(index);
+                }
+                index++;
+            }
+        }
+
+        // pushes updated element set out
+        updated.set(removed_indices);
+    =}
 }
 
+reactor Clock {
+    filter = new Filter();
+
+    input file: std::string;
+    input event: Event;
+    input removed: int;
+
+    timer t(0, 1 sec);
+    state events: std::vector<Event>();
+
+    // reaction that appends elements
+    reaction (event) {=
+        if (event.is_present() ){
+            events.push_back(*event.get().get());
+        }
+    =}
+
+    // reaction that triggers file read
+    reaction (file) {=
+        std::cout << "Read Event from file" << std::endl;
+    =}
+
+    // checking periodically if elements need to be triggered
+    reaction (t) -> filter.events {=
+        filter.events.set(events);
+    =}
+}
 
 main reactor alarmclock {
-  #trigger.event <- 3; 
-  filter = new Filter();
-  reaction(startup) -> filter.event {=
-    std::cout << "Starting Alarm Clock Reactor !" << std::endl;
-    Event e{
-      std::string("Test"),
-      9000
-    };
-    filter.event.set(e);
-  =}
+    clock = new Clock();
+
+    reaction(startup) -> clock.event {=
+        std::cout << "Starting Alarm Clock Reactor !" << std::endl;
+        Event e{
+            std::string("Test"),
+            9000
+        };
+        clock.event.set(e);
+    =}
 }
+
