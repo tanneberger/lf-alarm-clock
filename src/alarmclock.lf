@@ -10,7 +10,7 @@
 
 
 target Cpp {
-    keepalive: true;
+    keepalive: true
 }
 
 public preamble {=
