@@ -1,17 +1,28 @@
+/*
+* A alarm clock which runs on my raspberry pi
+*
+*
+*
+*
+*
+*
+*/
+
+
 target Cpp {
-    keepalive: true
+    keepalive: true;
 }
 
 public preamble {=
-    #include <functional>
-    #include <memory>
     #include <string>
     #include <iostream>
+    #include <fstream>
 
     struct Event {
         std::string message_;
         unsigned int time_stamp_;
     };
+
 =}
 
 reactor Trigger {
@@ -35,9 +46,14 @@ reactor Filter {
         // and than triggers the event
         auto lambda_trigger = [=](const Event& event){
             auto unix_time = (event.time_stamp_);
+            const auto p1 = std::chrono::system_clock::now();
+            auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
 
-            if( std::chrono::steady_clock::now().time_since_epoch().count() > unix_time ){
+            // checks if the element is between now and 30s ago
+            if(current_time - 30 < unix_time and current_time > unix_time  ){
                 trigger.event.set(event.message_);
+                return true;
+            } else if ( current_time > unix_time ) {
                 return true;
             }
             return false;
@@ -48,6 +64,7 @@ reactor Filter {
         if ( events.is_present() ){
             std::size_t index = 0;
             for(const Event& event: *events.get().get()) {
+                std::cout << "Checking " << event.message_ << std::endl;
                 if (lambda_trigger(event)){
                     removed_indices.push_back(index);
                 }
@@ -61,24 +78,24 @@ reactor Filter {
 }
 
 reactor Clock {
-    input file: std::string;
+    private preamble {=
+       constexpr const char* kFile = "./alarm_clock_events.csv";
+    =}
+
     input event: Event;
     input removed: std::vector<std::size_t>;
 
     timer t(0, 1 sec);
+    timer saver(10 sec, 30 sec);
     state events: std::vector<Event>();
     output events_out: std::vector<Event>;
 
     // reaction that appends elements
     reaction (event) {=
         if (event.is_present() ){
+            std::cout << "Adding Element" << std::endl;
             events.push_back(*event.get().get());
         }
-    =}
-
-    // reaction that triggers file read
-    reaction (file) {=
-        std::cout << "Read Event from file" << std::endl;
     =}
 
     // checking periodically if elements need to be triggered
@@ -86,13 +103,53 @@ reactor Clock {
         events_out.set(events);
     =}
 
+    // list of events which got triggered last time and therefore an be removed now
     reaction (removed) {=
         std::size_t removed_counter = 0;
         for (std::size_t i : *(removed.get().get())) {
-            std::cout << "Removed" << std::endl;
             events.erase(events.begin() + i - removed_counter);
             removed_counter++;
         }
+    =}
+
+    // initiation ... reading file to create state 
+    reaction (startup) {=
+        std::ifstream file;
+        file.open(kFile);
+
+        std::string line;
+        if(not file.is_open()) {
+            throw std::runtime_error("Cannot open event file!");
+        }
+
+        while (file) {
+            std::getline(file, line);
+            if (line.empty()) {
+                break;
+            }
+
+            Event serialized_event {};
+            std::size_t colon_pos = line.find(";");
+            serialized_event.message_ = line.substr(0, colon_pos);
+            serialized_event.time_stamp_ = static_cast<unsigned int>(std::stoi(line.substr(colon_pos + 1, line.size() - 2)));
+
+            events.push_back(serialized_event);
+        }
+
+        file.close();
+        std::cout << "Reading ... " << std::endl; 
+    =}
+
+    // state needs to be saved to file
+    reaction (shutdown, saver) {=
+        std::cout << "Saving ... " << std::endl;
+        std::ofstream file(kFile, std::ios::trunc);
+
+        for (const Event& e : events ) {
+            file << e.message_ + ";" + std::to_string(e.time_stamp_) + "\n";
+        }
+
+        file.close();
     =}
 }
 
@@ -105,9 +162,13 @@ main reactor alarmclock {
 
     reaction(startup) -> clock.event {=
         std::cout << "Starting Alarm Clock Reactor !" << std::endl;
+        const auto p1 = std::chrono::system_clock::now();
+        auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+
+
         Event e{
             std::string("Test"),
-            9000
+            current_time + 30
         };
         clock.event.set(e);
     =}
