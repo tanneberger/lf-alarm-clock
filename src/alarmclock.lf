@@ -4,14 +4,14 @@
 *
 *
 *
-*
-*
 */
 
-
 target Cpp {
-    keepalive: true
-}
+    keepalive: true,
+    cmake-include: "alarmclock.cmake"
+};
+
+import MinRestApi from "src/MinRestApi.lf";
 
 public preamble {=
     #include <string>
@@ -164,7 +164,6 @@ main reactor alarmclock {
         std::cout << "Starting Alarm Clock Reactor !" << std::endl;
         const auto p1 = std::chrono::system_clock::now();
         auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-
 
         Event e{
             std::string("Test"),
