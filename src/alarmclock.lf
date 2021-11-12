@@ -11,7 +11,7 @@ target Cpp {
     cmake-include: "alarmclock.cmake"
 };
 
-import MinRestApi from "src/MinRestApi.lf";
+import Connection from "src/Connection.lf";
 
 public preamble {=
     #include <string>
