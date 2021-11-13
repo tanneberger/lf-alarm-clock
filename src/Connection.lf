@@ -1,25 +1,178 @@
 
 
 target Cpp{
-    cmake-include: "alarmclock.cmake"
+    cmake-include: "Alarmclock.cmake"
 };
+
+//import Clock, Filter, Trigger from "Alarmclock.lf";
 
 public preamble {=
     #include <boost/asio.hpp>
     #include <iostream>
+    #include <string>
+    #include <thread>
+    #include <fstream>
+
+    struct Event {
+        std::string message_;
+        unsigned int time_stamp_;
+    };
     
+    struct ParsedHeader {
+        std::string method_;
+        std::string endpoint_;
+        std::string body_;
+    };
+
     constexpr short kBackLog = 30;
-    constexpr unsigned short kPort = 666;
+    constexpr unsigned short kPort = 6666;
 =}
 
 
-main reactor Connection{
-    state running: bool(true);
-    input terminate: bool;
+reactor Trigger {
+    input event: std::string;
+    reaction(event) {=
+        if(event.is_present()){
+            std::cout << "Triggering Event: " << *(event.get().get()) << std::endl;
+        }
+    =}
+}
 
-    method responde(raw_data: {= std::array<char, 4096>& =}) {=
+reactor Filter {
+    trigger = new Trigger();
+
+    input events: std::vector<Event>;
+    output updated: std::vector<std::size_t>;
+    output event: Event;
+
+    reaction (events) -> trigger.event, updated {=
+        // lambda which checks if a given event needs to execute
+        // and than triggers the event
+        auto lambda_trigger = [=](const Event& event){
+            auto unix_time = (event.time_stamp_);
+            const auto p1 = std::chrono::system_clock::now();
+            auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+
+            // checks if the element is between now and 30s ago
+            if(current_time - 30 < unix_time and current_time > unix_time  ){
+                trigger.event.set(event.message_);
+                return true;
+            } else if ( current_time > unix_time ) {
+                return true;
+            }
+            return false;
+        };
+
+        // list of element which can be removed in the next iteration
+        std::vector<std::size_t> removed_indices;
+        if ( events.is_present() ){
+            std::size_t index = 0;
+            for(const Event& event: *events.get().get()) {
+                std::cout << "Checking " << event.message_ << std::endl;
+                if (lambda_trigger(event)){
+                    removed_indices.push_back(index);
+                }
+                index++;
+            }
+        }
+
+        // pushes updated element set out
+        updated.set(removed_indices);
+    =}
+}
+
+reactor Clock {
+    private preamble {=
+       constexpr const char* kFile = "./alarm_clock_events.csv";
+    =}
+
+    input event: Event;
+    input removed: std::vector<std::size_t>;
+
+    timer t(0, 1 sec);
+    timer saver(10 sec, 30 sec);
+    state events: std::vector<Event>();
+    output events_out: std::vector<Event>;
+
+    // reaction that appends elements
+    reaction (event) {=
+        std::cout << "TEST" << std::endl;
+        if (event.is_present() ){
+            std::cout << "Adding Element" << std::endl;
+            events.push_back(*event.get().get());
+        }
+    =}
+
+    // checking periodically if elements need to be triggered
+    reaction (t) -> events_out {=
+        events_out.set(events);
+    =}
+
+    // list of events which got triggered last time and therefore an be removed now
+    reaction (removed) {=
+        std::size_t removed_counter = 0;
+        for (std::size_t i : *(removed.get().get())) {
+            events.erase(events.begin() + i - removed_counter);
+            removed_counter++;
+        }
+    =}
+
+    // initiation ... reading file to create state 
+    reaction (startup) {=
+        std::ifstream file;
+        file.open(kFile);
+
+        std::string line;
+        if(not file.is_open()) {
+            throw std::runtime_error("Cannot open event file!");
+        }
+
+        while (file) {
+            std::getline(file, line);
+            if (line.empty()) {
+                break;
+            }
+
+            Event serialized_event {};
+            std::size_t colon_pos = line.find(";");
+            serialized_event.message_ = line.substr(0, colon_pos);
+            serialized_event.time_stamp_ = static_cast<unsigned int>(std::stoi(line.substr(colon_pos + 1, line.size() - 2)));
+
+            events.push_back(serialized_event);
+        }
+
+        file.close();
+        std::cout << "Reading ... " << std::endl; 
+    =}
+
+    // state needs to be saved to file
+    reaction (shutdown, saver) {=
+        std::cout << "Saving ... " << std::endl;
+        std::ofstream file(kFile, std::ios::trunc);
+
+        for (const Event& e : events ) {
+            file << e.message_ + ";" + std::to_string(e.time_stamp_) + "\n";
+        }
+
+        file.close();
+    =}
+}
+
+
+main reactor Connection{
+    clock = new Clock();
+    filter = new Filter();
+    clock.events_out -> filter.events;
+    filter.updated -> clock.removed;
+
+    state running: bool(true);
+    state thread: {= std::thread =}
+
+    input terminate: bool;
+    output event: {= std::string =};
+
+    method responde(raw_data: {= std::array<char, 4096>& =}): {= ParsedHeader =} {=
         const std::string kContentLenght = "Content-Length";
-        const char line_break = 0x0a;
         std::string data(raw_data.data(), 4096);
         std::string header, str_iterator, body;
         std::size_t current_position = 0;
@@ -29,12 +182,9 @@ main reactor Connection{
         auto index_method = data.find(" ");
         std::string http_method = data.substr(0, index_method);
         auto index_endpoint = data.find(" ");
-        std::string http_endpoint = data.substr(index_method + 1, index_method + index_endpoint - 3);
+        std::string http_endpoint = data.substr(index_method + 1, index_method + index_endpoint - 4);
 
-        std::cout << "Request: " << http_method << std::endl;
-        std::cout << "Endpoint: " << http_endpoint << std::endl;
         // this jumps to the beginning of the body line by line
-        
         std::istringstream iss(data);
 
         for (std::string line; std::getline(iss, line); ){
@@ -51,30 +201,74 @@ main reactor Connection{
 
         // concatenates the body together
         body = data.substr(current_position, current_position + content_length);
-
-        if (http_method == "GET" and http_endpoint == "/list") {
-            std::cout << "[DEBUG]: HIT /list " << std::endl;
-        }
+        return ParsedHeader {
+            http_method,
+            http_endpoint,
+            body
+        };
     =}
 
 
-    reaction (startup){=
-        boost::asio::ip::tcp::endpoint ep(boost::asio::ip::address_v4::any(), kPort);
-        boost::asio::io_service ios;
-        boost::asio::ip::tcp::acceptor acceptor(ios, ep.protocol());
-        acceptor.bind(ep);
-        acceptor.listen(kBackLog);
-        boost::asio::ip::tcp::socket sock(ios);
+    reaction (startup) -> clock.event {=
+        std::cout << "Starting Alarm Clock Reactor !" << std::endl;
+        const auto p1 = std::chrono::system_clock::now();
+        auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
         
-        std::array<char, 4096> data;
-        
-        std::cout << "Started Receiving" << std::endl;
-        while (running){
-            acceptor.accept(sock); 
-            sock.read_some(boost::asio::buffer(data));
-            responde(data);
-            std::cout << "Yay Data: " << data.data() << std::endl;
-        }
+        Event e{
+            std::string("Test"),
+            current_time + 30
+        }; 
+        clock.event.set(e);
+
+        auto lambda = [&](){
+            boost::asio::ip::tcp::endpoint ep(boost::asio::ip::address_v4::any(), kPort);
+            boost::asio::io_service ios;
+            boost::asio::ip::tcp::acceptor acceptor(ios, ep.protocol());
+            acceptor.bind(ep);
+            acceptor.listen(kBackLog);
+            boost::asio::ip::tcp::socket sock(ios);
+            
+            std::array<char, 4096> data;
+            
+            std::cout << "Started Receiving" << std::endl;
+            while (running){
+
+                acceptor.accept(sock); 
+                sock.read_some(boost::asio::buffer(data));
+                
+                auto header = responde(data);
+                std::cout << "M:" << header.method_ << "E:" << header.endpoint_ << "B:" << header.body_ << "|" << std::endl;
+                std::string response;
+                // handleing the endpoints
+                if (header.method_ == "POST" and header.endpoint_ == "/list") {
+                    response = "LISTING";
+                } else if( header.method_ == "POST" and header.endpoint_ == "/stop") {
+                    response = "STOP";
+                } else if( header.method_ == "POST" and header.endpoint_ == "/add") {
+                    response = "ADDING";
+                    Event serialized_event {};
+
+                    std::size_t colon_pos = header.body_.find(";");
+                    serialized_event.message_ = header.body_.substr(0, colon_pos);
+                    serialized_event.time_stamp_ = static_cast<unsigned int>(
+                        std::stoi(header.body_.substr(colon_pos + 1, header.body_.size() - 2)));
+                    
+                    std::cout << "Message:" << serialized_event.message_ << "T:" << serialized_event.time_stamp_ << std::endl;
+                    clock.event.set(serialized_event);
+                }else {
+                    response = "NO VALID ENDPOINT";
+                }
+
+                sock.write_some(boost::asio::buffer(response));
+                sock.close();
+            }
+        };
+
+        std::thread thread(lambda);
+    =}
+
+    reaction ( shutdown ) {=
+        thread.join();
     =}
 
     reaction (terminate) {=
