@@ -1,7 +1,7 @@
 
 
 target Cpp{
-    cmake-include: "Alarmclock.cmake",
+    cmake-include: "AlarmClock.cmake",
     keepalive: true
 };
 
@@ -25,6 +25,13 @@ public preamble {=
         std::string body_;
     };
 
+    auto time_over(const Event& event) noexcept -> bool {
+        auto unix_time = (event.time_stamp_);
+        const auto p1 = std::chrono::system_clock::now();
+        auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+        return current_time > unix_time;
+    }
+
     constexpr short kBackLog = 30;
     constexpr unsigned short kPort = 6666;
     constexpr const char* kMusicDir = "/home/revol-xut/music/AlarmClock/";
@@ -33,8 +40,8 @@ public preamble {=
 
 
 reactor Trigger {
-    input event: std::string;
     input stop: void;
+    logical action event: {=std::string=}
 
     reaction(event) {=
         auto select_random_file = []{
@@ -49,87 +56,52 @@ reactor Trigger {
         if(event.is_present()){
             std::cout << "Triggering Event: " << *(event.get().get()) << std::endl;
             std::string command = "mpc add AlarmClock/" + select_random_file();
-            std::cout << command << std::endl;
-            system(command.c_str());
-        }
-    =}
-}
-
-reactor Filter {
-    trigger = new Trigger();
-
-    input events: std::vector<Event>;
-    output updated: std::vector<std::size_t>;
-    output event: Event;
-
-    reaction (events) -> trigger.event, updated {=
-        // lambda which checks if a given event needs to execute
-        // and than triggers the event
-        auto lambda_trigger = [=](const Event& event){
-            auto unix_time = (event.time_stamp_);
-            const auto p1 = std::chrono::system_clock::now();
-            auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-
-            // checks if the element is between now and 30s ago
-            if(current_time - 30 < unix_time and current_time > unix_time  ){
-                trigger.event.set(event.message_);
-                return true;
-            } else if ( current_time > unix_time ) {
-                return true;
-            }
-            return false;
-        };
-
-        // list of element which can be removed in the next iteration
-        std::vector<std::size_t> removed_indices;
-        if ( events.is_present() ){
-            std::size_t index = 0;
-            for(const Event& event: *events.get().get()) {
-                if (lambda_trigger(event)){
-                    removed_indices.push_back(index);
-                }
-                index++;
+            if( system(command.c_str()) != 0 ){
+                std::runtime_error("mpc finished with non zero return value");
             }
         }
-
-        // pushes updated element set out
-        updated.set(removed_indices);
     =}
 }
 
 reactor Clock {
+    trigger = new Trigger();
+    // this event will be scheduled and added to persistent storage
     input event: Event;
+    // list of indices which can be removed from persistent storage
     input removed: std::vector<std::size_t>;
+    // timer which triggers clear and save
+    timer maintance(10 sec, 30 sec);
 
-    timer t(0, 1 sec);
-    timer saver(10 sec, 30 sec);
+    // persistant storage
     state events: std::vector<Event>();
     output events_out: std::vector<Event>;
 
     // reaction that appends elements
-    reaction (event) {=
+    reaction (event) -> trigger.event {=
         if (event.is_present() ){
-            std::cout << "Adding Element" << std::endl;
-            events.push_back(*event.get().get());
+            auto extracted = event.get().get();
+            std::cout << "Adding event to event pipeline\n" << std::endl;
+            events.push_back(*extracted);
+            
+            const auto t = std::chrono::system_clock::now();
+            std::chrono::seconds desired_time = std::chrono::seconds(extracted->time_stamp_);
+            std::chrono::seconds current_time = std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
+            std::chrono::seconds delta_t = desired_time - current_time;
+            trigger.event.schedule(extracted->message_, delta_t);
         }
     =}
 
     // checking periodically if elements need to be triggered
-    reaction (t) -> events_out {=
+    reaction (maintance) -> events_out {=
         events_out.set(events);
-    =}
-
-    // list of events which got triggered last time and therefore an be removed now
-    reaction (removed) {=
-        std::size_t removed_counter = 0;
-        for (std::size_t i : *(removed.get().get())) {
-            events.erase(events.begin() + i - removed_counter);
-            removed_counter++;
-        }
     =}
 
     // initiation ... reading file to create state 
     reaction (startup) {=
+        if (not std::filesystem::exists(kFile)){
+            std::ofstream{kFile};
+        }
+
         std::ifstream file;
         file.open(kFile);
 
@@ -151,14 +123,40 @@ reactor Clock {
                 std::stoi(line.substr(colon_pos + 1, line.size() - 2))
             );
 
-            events.push_back(serialized_event);
+            if(not time_over(serialized_event)){
+                trigger.event.set(serialized_event);
+                events.push_back(serialized_event);
+            }
         }
 
         file.close();
     =}
 
     // state needs to be saved to file
-    reaction (shutdown, saver) {=
+    reaction (shutdown, maintance) {=
+        remove_events();
+        save();
+    =}
+
+    method remove_events() {=
+        // list of element which can be removed in the next iteration
+        std::vector<std::size_t> removed_indices;
+        std::size_t index = 0;
+        for(const Event& event: events) {
+            if (time_over(event)){
+                removed_indices.push_back(index);
+            }
+            index++;
+        }
+
+        std::size_t removed_counter = 0;
+        for (std::size_t i : removed_indices) {
+            events.erase(events.begin() + i - removed_counter);
+            removed_counter++;
+        }
+    =}
+    
+    method save() {=
         std::ofstream file(kFile, std::ios::trunc);
 
         for (const Event& e : events ) {
@@ -167,14 +165,32 @@ reactor Clock {
 
         file.close();
     =}
+
+    const method print_events(): {=std::string=} {=
+        std::string return_value;
+
+        auto unix_to_human_readable = [](unsigned int time_stamp){
+            using Clock = std::chrono::high_resolution_clock;
+            using TimePoint = std::chrono::time_point<Clock>;
+            
+            const Clock::duration duration_time_stamp = std::chrono::seconds(time_stamp);
+            const TimePoint chrono_time_point(duration_time_stamp);
+            std::time_t end_time = std::chrono::system_clock::to_time_t(chrono_time_point);
+            return std::ctime(&end_time);
+        };
+        
+        for (const Event& event: events) {
+            return_value += event.message_ + ";" + unix_to_human_readable(event.time_stamp_) + "\n";
+        };
+
+        return return_value;
+    =}
+
 }
 
 
-main reactor Connection{
+main reactor AlarmClock {
     clock = new Clock();
-    filter = new Filter();
-    clock.events_out -> filter.events;
-    filter.updated -> clock.removed;
 
     physical action new_event: {= Event =};
     state running: bool(true);
@@ -183,7 +199,7 @@ main reactor Connection{
     input terminate: void;
     output event: {= std::string =};
 
-    method responde(raw_data: {= std::array<char, 4096>& =}): {= ParsedHeader =} {=
+    method response(raw_data: {= std::array<char, 4096>& =}): {= ParsedHeader =} {=
         const std::string kContentLenght = "Content-Length";
         std::string data(raw_data.data(), 4096);
         std::string header, str_iterator, body;
@@ -194,7 +210,7 @@ main reactor Connection{
         auto index_method = data.find(" ");
         std::string http_method = data.substr(0, index_method);
         auto index_endpoint = data.find(" ");
-        std::string http_endpoint = data.substr(index_method + 1, index_method + index_endpoint - 4);
+        std::string http_endpoint = data.substr(index_method + 1, index_method + index_endpoint - 3);
 
         // this jumps to the beginning of the body line by line
         std::istringstream iss(data);
@@ -226,7 +242,8 @@ main reactor Connection{
 
 
     reaction (startup) -> new_event {=
-        std::cout << "Starting Alarm Clock Reactor !" << std::endl;
+        std::cout << "Starting Alarmclock Reactor!\n" << std::endl;
+        constexpr const char* kResponseHeader = "HTTP/1.0 200 OK\nContent-Type: text/plain\n\n";
 
         thread = std::thread([&]{
             // initializing network objects from beast boost
@@ -236,26 +253,26 @@ main reactor Connection{
             acceptor.bind(ep);
             acceptor.listen(kBackLog);
             boost::asio::ip::tcp::socket sock(ios);
-
+            
+            // request and response buffer
             std::array<char, 4096> data;
+            std::string body_res;
             Event serialized_event {};
 
-            std::cout << "Started Receiving" << std::endl;
-
+            std::cout << "Start receiving thread\n" << std::endl;
             while (running){
                 acceptor.accept(sock); 
                 sock.read_some(boost::asio::buffer(data));
-                auto header = responde(data);
-                std::string response;
+                auto header = response(data);
 
                 // handleing the endpoints
                 if (header.method_ == "POST" and header.endpoint_ == "/list") {
-                    response = "LISTING";
+                    //body_res = clock->print_events();
                 } else if( header.method_ == "POST" and header.endpoint_ == "/stop") {
-                    response = "STOP";
-                    system("mpc next");
+                    auto mpc_exit_code = system("mpc next");
+                    body_res = "STOPING WITH " + std::to_string(mpc_exit_code);
                 } else if( header.method_ == "POST" and header.endpoint_ == "/add") {
-                    response = "ADDING";
+                    body_res = "ADDING";
 
                     std::size_t colon_pos = header.body_.find(";");
                     serialized_event.message_ = header.body_.substr(0, colon_pos);
@@ -264,10 +281,10 @@ main reactor Connection{
 
                     new_event.schedule(serialized_event, 0ms);
                 }else {
-                    response = "NO VALID ENDPOINT";
+                    body_res = "NO VALID ENDPOINT";
                 }
-
-                sock.write_some(boost::asio::buffer(response));
+                std::string composed_respone = std::string(kResponseHeader) + body_res;
+                sock.write_some(boost::asio::buffer(composed_respone));
                 sock.close();
             }
         });
