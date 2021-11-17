@@ -24,14 +24,7 @@ public preamble {=
         std::string endpoint_;
         std::string body_;
     };
-
-    auto time_over(const Event& event) noexcept -> bool {
-        auto unix_time = (event.time_stamp_);
-        const auto p1 = std::chrono::system_clock::now();
-        auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-        return current_time > unix_time;
-    }
-
+    
     constexpr short kBackLog = 30;
     constexpr unsigned short kPort = 6666;
     constexpr const char* kMusicDir = "/home/revol-xut/music/AlarmClock/";
@@ -41,9 +34,21 @@ public preamble {=
 
 reactor Trigger {
     input stop: void;
-    logical action event: {=std::string=}
+    input input_event: {=Event=};
+    logical action triggered_event: {=std::string=};
+    
+    reaction (input_event) -> triggered_event {=
+        if(input_event.is_present()) {
+            auto extracted = input_event.get().get();
+            const auto t = std::chrono::system_clock::now();
+            std::chrono::seconds desired_time = std::chrono::seconds(extracted->time_stamp_);
+            std::chrono::seconds current_time = std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
+            std::chrono::seconds delta_t = desired_time - current_time;
+            triggered_event.schedule(extracted->message_, delta_t);
+        }
+    =}
 
-    reaction(event) {=
+    reaction(triggered_event) {=
         auto select_random_file = []{
             std::vector<std::string> files;
             for (const auto& file : std::filesystem::directory_iterator(kMusicDir)) {
@@ -53,8 +58,8 @@ reactor Trigger {
             return files[rand() % files.size()];
         };
 
-        if(event.is_present()){
-            std::cout << "Triggering Event: " << *(event.get().get()) << std::endl;
+        if(triggered_event.is_present()){
+            std::cout << "Triggering Event: " << *(triggered_event.get().get()) << std::endl;
             std::string command = "mpc add AlarmClock/" + select_random_file();
             if( system(command.c_str()) != 0 ){
                 std::runtime_error("mpc finished with non zero return value");
@@ -64,6 +69,14 @@ reactor Trigger {
 }
 
 reactor Clock {
+    private preamble {=
+        auto time_over(const Event& event) noexcept -> bool {
+            auto unix_time = (event.time_stamp_);
+            const auto p1 = std::chrono::system_clock::now();
+            auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+            return current_time > unix_time;
+        }
+    =}
     trigger = new Trigger();
     // this event will be scheduled and added to persistent storage
     input event: Event;
@@ -77,17 +90,11 @@ reactor Clock {
     output events_out: std::vector<Event>;
 
     // reaction that appends elements
-    reaction (event) -> trigger.event {=
+    reaction (event) -> trigger.input_event {=
         if (event.is_present() ){
             auto extracted = event.get().get();
             std::cout << "Adding event to event pipeline\n" << std::endl;
-            events.push_back(*extracted);
-            
-            const auto t = std::chrono::system_clock::now();
-            std::chrono::seconds desired_time = std::chrono::seconds(extracted->time_stamp_);
-            std::chrono::seconds current_time = std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
-            std::chrono::seconds delta_t = desired_time - current_time;
-            trigger.event.schedule(extracted->message_, delta_t);
+            trigger.input_event.set(*extracted);
         }
     =}
 
@@ -97,7 +104,7 @@ reactor Clock {
     =}
 
     // initiation ... reading file to create state 
-    reaction (startup) {=
+    reaction (startup) -> trigger.input_event {=
         if (not std::filesystem::exists(kFile)){
             std::ofstream{kFile};
         }
@@ -124,7 +131,7 @@ reactor Clock {
             );
 
             if(not time_over(serialized_event)){
-                trigger.event.set(serialized_event);
+                trigger.input_event.set(serialized_event);
                 events.push_back(serialized_event);
             }
         }
@@ -264,6 +271,10 @@ main reactor AlarmClock {
                 acceptor.accept(sock); 
                 sock.read_some(boost::asio::buffer(data));
                 auto header = response(data);
+                
+                std::cout << "METHOD: " << header.method_
+                          << "\nENDPOINT:" << header.endpoint_ 
+                          << "\nBODY:" << header.body_ << std::end;
 
                 // handleing the endpoints
                 if (header.method_ == "POST" and header.endpoint_ == "/list") {
