@@ -1,3 +1,12 @@
+/*
+* This is a minimal example of an alarmclock implemeted using the 
+* features lingua franca supplies.
+* 
+* This is just an extract and simplification from the main project
+* which you can find here: https://github.com/revol-xut/lf-alarm-clock
+*
+* Author: Tassilo Tanneberer <tassilo.tanneberger@tu-dresden.de>
+*/
 
 
 target Cpp{
@@ -5,9 +14,7 @@ target Cpp{
     keepalive: true
 };
 
-
 public preamble {=
-    #include <boost/asio.hpp>
     #include <iostream>
     #include <string>
     #include <thread>
@@ -18,15 +25,7 @@ public preamble {=
         std::string message_;
         unsigned int time_stamp_;
     };
-    
-    struct ParsedHeader {
-        std::string method_;
-        std::string endpoint_;
-        std::string body_;
-    };
-    
-    constexpr short kBackLog = 30;
-    constexpr unsigned short kPort = 6666;
+
     constexpr const char* kMusicDir = "/home/revol-xut/music/AlarmClock/";
     constexpr const char* kFile = "./alarm_clock_events.csv";
 =}
@@ -36,13 +35,14 @@ reactor Trigger {
     input stop: void;
     input input_event: {=Event=};
     logical action triggered_event: {=std::string=};
-    
+
     reaction (input_event) -> triggered_event {=
         if(input_event.is_present()) {
             auto extracted = input_event.get().get();
             const auto t = std::chrono::system_clock::now();
             std::chrono::seconds desired_time = std::chrono::seconds(extracted->time_stamp_);
-            std::chrono::seconds current_time = std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
+            std::chrono::seconds current_time = 
+                    std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
             std::chrono::seconds delta_t = desired_time - current_time;
             triggered_event.schedule(extracted->message_, delta_t);
         }
@@ -60,7 +60,7 @@ reactor Trigger {
 
         if(triggered_event.is_present()){
             std::cout << "Triggering Event: " << *(triggered_event.get().get()) << std::endl;
-            std::string command = "mpc add AlarmClock/" + select_random_file();
+            std::string command = "mpc add AlarmClock/" + select_random_file() + " && mpc play";
             if( system(command.c_str()) != 0 ){
                 std::runtime_error("mpc finished with non zero return value");
             }
@@ -69,6 +69,7 @@ reactor Trigger {
 }
 
 reactor Clock {
+    // function which is used to check if a given event has already past
     private preamble {=
         auto time_over(const Event& event) noexcept -> bool {
             auto unix_time = (event.time_stamp_);
@@ -77,17 +78,16 @@ reactor Clock {
             return current_time > unix_time;
         }
     =}
+
+    // trigger reactor which handles the execution of the scheduled reaction
     trigger = new Trigger();
     // this event will be scheduled and added to persistent storage
     input event: Event;
-    // list of indices which can be removed from persistent storage
-    input removed: std::vector<std::size_t>;
     // timer which triggers clear and save
     timer maintance(10 sec, 30 sec);
 
     // persistant storage
     state events: std::vector<Event>();
-    output events_out: std::vector<Event>;
 
     // reaction that appends elements
     reaction (event) -> trigger.input_event {=
@@ -105,6 +105,7 @@ reactor Clock {
 
     // initiation ... reading file to create state 
     reaction (startup) -> trigger.input_event {=
+        // if the calender file doesn't exists it's created
         if (not std::filesystem::exists(kFile)){
             std::ofstream{kFile};
         }
@@ -117,6 +118,7 @@ reactor Clock {
             throw std::runtime_error("Cannot open event file!");
         }
 
+        // iterating through the file every line corresponds to one events (csv)
         while (file) {
             std::getline(file, line);
             if (line.empty()) {
@@ -124,12 +126,15 @@ reactor Clock {
             }
 
             Event serialized_event {};
+
+            // an event has the shape message;time_stamp\newline
             std::size_t colon_pos = line.find(";");
             serialized_event.message_ = line.substr(0, colon_pos);
             serialized_event.time_stamp_ = static_cast<unsigned int>(
                 std::stoi(line.substr(colon_pos + 1, line.size() - 2))
             );
 
+            // if the given event is not already in the past it gets schedules by lingua franca
             if(not time_over(serialized_event)){
                 trigger.input_event.set(serialized_event);
                 events.push_back(serialized_event);
@@ -162,7 +167,7 @@ reactor Clock {
             removed_counter++;
         }
     =}
-    
+
     method save() {=
         std::ofstream file(kFile, std::ios::trunc);
 
@@ -173,6 +178,7 @@ reactor Clock {
         file.close();
     =}
 
+    // returns a formatted string of all the events in an human readable format
     const method print_events(): {=std::string=} {=
         std::string return_value;
 
