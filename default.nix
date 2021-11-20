@@ -40,33 +40,39 @@ lfc = stdenv.mkDerivation {
   };
 };
 
+cpp-runtime = fetchFromGitHub {
+  owner = "lf-lang";
+  repo = "reactor-cpp";
+  rev = "007143225dbc198a5fee233ce125c3584a9541d8";
+  sha256 = "sha256-wiBTJ4jSzoAu/Tg2cMqMWv7qZD29F+ysDOOF6F/DLJM=";
+};
+
 in
   stdenv.mkDerivation {
     name = "alarm-clock";
     version = "0.0.1";
 
-    #src = fetchFromGitHub {
-    #  owner = "revol-xut";
-    #  repo = "lf-alarm-clock";
-    #  rev = "dfd14eee71e9baf830e893de551a872b74b19c64";
-    #  sha256 = "OE2+FxinY62p3hsF6lbm6Q78YoA7Az3wfJmWSk2wXkU=";
-    #};
-    src = ./.;
+    src = fetchFromGitHub {
+      owner = "revol-xut";
+      repo = "lf-alarm-clock";
+      rev = "2b7cecb842935c84a3a3264769ee5ece48c8ea79";
+      sha256 = "sha256-zsahCcGmIg685rZjoBZ5U/QM4EyeXEWt31jpDTrNZp8=";
+    };
+    #src = ./.;
 
     buildInputs = with pkgs; [ lfc which gcc cmake git boost ];
-    
+
     configurePhase = ''
       echo "Test";
     '';
 
     buildPhase = ''
       echo "Starting compiling"
-      ls -al
       ${lfc}/bin/lfc src/Clock.lf src/Networking.lf
     '';
 
     installPhase = ''
-      cp bin/Connection $out/
+      cp bin/Networking $out/
     '';
   }
 
