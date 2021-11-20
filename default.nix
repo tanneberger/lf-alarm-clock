@@ -45,18 +45,24 @@ in
     name = "alarm-clock";
     version = "0.0.1";
 
-    src = fetchFromGitHub {
-      owner = "revol-xut";
-      repo = "lf-alarm-clock";
-      rev = "dfd14eee71e9baf830e893de551a872b74b19c64";
-      sha256 = "OE2+FxinY62p3hsF6lbm6Q78YoA7Az3wfJmWSk2wXkU=";
-    };
+    #src = fetchFromGitHub {
+    #  owner = "revol-xut";
+    #  repo = "lf-alarm-clock";
+    #  rev = "dfd14eee71e9baf830e893de551a872b74b19c64";
+    #  sha256 = "OE2+FxinY62p3hsF6lbm6Q78YoA7Az3wfJmWSk2wXkU=";
+    #};
+    src = ./.;
 
-    buildInputs = with pkgs; [ lfc which gcc cmakeCurses ];
+    buildInputs = with pkgs; [ lfc which gcc cmake git ];
+    
+    configurePhase = ''
+      echo "Test";
+    '';
 
     buildPhase = ''
       echo "Starting compiling"
-      ${lfc}/bin/lfc src/Connection.lf
+      ls -al
+      ${lfc}/bin/lfc src/Networking.lf
     '';
 
     installPhase = ''
