@@ -53,7 +53,7 @@ in
     #};
     src = ./.;
 
-    buildInputs = with pkgs; [ lfc which gcc cmake git ];
+    buildInputs = with pkgs; [ lfc which gcc cmake git boost ];
     
     configurePhase = ''
       echo "Test";
@@ -62,7 +62,7 @@ in
     buildPhase = ''
       echo "Starting compiling"
       ls -al
-      ${lfc}/bin/lfc src/Networking.lf
+      ${lfc}/bin/lfc src/Clock.lf src/Networking.lf
     '';
 
     installPhase = ''

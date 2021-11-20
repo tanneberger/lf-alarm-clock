@@ -98,11 +98,6 @@ reactor Clock {
         }
     =}
 
-    // checking periodically if elements need to be triggered
-    reaction (maintance) -> events_out {=
-        events_out.set(events);
-    =}
-
     // initiation ... reading file to create state 
     reaction (startup) -> trigger.input_event {=
         // if the calender file doesn't exists it's created

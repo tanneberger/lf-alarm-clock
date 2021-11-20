@@ -17,7 +17,7 @@ target Cpp{
     keepalive: true
 };
 
-import Clock from "./Clock.lf";
+import Clock from "Clock.lf";
 
 public preamble {=
     #include <boost/asio.hpp>
@@ -125,7 +125,7 @@ main reactor Networking {
 
                 // handleing the endpoints
                 if (header.method_ == "POST" and header.endpoint_ == "/list") {
-                    body_res = clock->print_events();
+                    //body_res = clock->print_events();
                 } else if( header.method_ == "POST" and header.endpoint_ == "/stop") {
                     auto mpc_exit_code = system("mpc next");
                     body_res = "STOPING WITH " + std::to_string(mpc_exit_code);
