@@ -15,19 +15,7 @@ target Cpp{
 };
 
 public preamble {=
-    #include <iostream>
-    #include <string>
-    #include <thread>
-    #include <fstream>
-    #include <filesystem>
-
-    struct Event {
-        std::string message_;
-        unsigned int time_stamp_;
-    };
-
-    constexpr const char* kMusicDir = "/home/revol-xut/music/AlarmClock/";
-    constexpr const char* kFile = "./alarm_clock_events.csv";
+    #include "../../../src/shared_header.hpp"
 =}
 
 
@@ -83,6 +71,8 @@ reactor Clock {
     trigger = new Trigger();
     // this event will be scheduled and added to persistent storage
     input event: Event;
+    // list of events
+    output event_dump: {= std::string =};
     // timer which triggers clear and save
     timer maintance(10 sec, 30 sec);
 
@@ -90,16 +80,17 @@ reactor Clock {
     state events: std::vector<Event>();
 
     // reaction that appends elements
-    reaction (event) -> trigger.input_event {=
+    reaction (event) -> trigger.input_event, event_dump {=
         if (event.is_present() ){
             auto extracted = event.get().get();
             std::cout << "Adding event to event pipeline\n" << std::endl;
             trigger.input_event.set(*extracted);
+            event_dump.set(print_events());
         }
     =}
 
     // initiation ... reading file to create state 
-    reaction (startup) -> trigger.input_event {=
+    reaction (startup) -> trigger.input_event, event_dump {=
         // if the calender file doesn't exists it's created
         if (not std::filesystem::exists(kFile)){
             std::ofstream{kFile};
@@ -137,6 +128,7 @@ reactor Clock {
         }
 
         file.close();
+        event_dump.set(print_events());
     =}
 
     // state needs to be saved to file

@@ -17,36 +17,24 @@ target Cpp{
     keepalive: true
 };
 
-import Clock from "Clock.lf";
-
 public preamble {=
-    #include <boost/asio.hpp>
-
-    // very simple struct to handle http request
-    struct ParsedHeader {
-        std::string method_;
-        std::string endpoint_;
-        std::string body_;
-    };
-
-    constexpr short kBackLog = 30;
-    constexpr unsigned short kPort = 6666;
+    #include "../../../src/shared_header.hpp"
 =}
 
 
-main reactor Networking {
-    // imported clock reactor which handles persistent storage and scheduling of events
-    clock = new Clock();
-
+reactor Network {
     // physical event which is triggered by receiving a request
     physical action new_event: {= Event =};
 
     // variables for the receive thread
     state running: bool(true);
-    state thread: {= std::thread =}
+    state thread: {= std::thread =}; // receive thread
+    state events: {= std::string =}; // copy
 
     input terminate: void;
-    output event: {= std::string =};
+    input updated_events: {= std::string =};
+
+    output event: {= Event =}; // event which will be added to the clock
 
     // method which parsed the http header
     method response(raw_data: {= std::array<char, 4096>& =}): {= ParsedHeader =} {=
@@ -55,16 +43,22 @@ main reactor Networking {
         std::string header, str_iterator, body;
         std::size_t current_position = 0;
         std::size_t content_length = 0;
+        ParsedHeader serialized_header;
+
 
         // start parsing the http header
         auto index_method = data.find(" ");
-        std::string http_method = data.substr(0, index_method);
+        serialized_header.method_ = data.substr(0, index_method);
+
         auto index_endpoint = data.find(" ");
-        std::string http_endpoint = data.substr(index_method + 1, index_method + index_endpoint - 3);
+        serialized_header.endpoint_ = data.substr(index_method + 1, index_method + index_endpoint - 3);
+        serialized_header.endpoint_.erase(std::remove(
+                serialized_header.endpoint_.begin(), 
+                serialized_header.endpoint_.end(), ' '),
+                serialized_header.endpoint_.end());
 
         // this jumps to the beginning of the body line by line
         std::istringstream iss(data);
-        
         // iterates over the lines in the http header
         for (std::string line; std::getline(iss, line); ){
             current_position += line.size();
@@ -79,17 +73,13 @@ main reactor Networking {
         }
 
         // concatenates the body together2b7cecb842935c84a3a3264769ee5ece48c8ea79
-        body = data.substr(current_position, current_position + content_length);
-        return ParsedHeader {
-            http_method,
-            http_endpoint,
-            body
-        };
+        serialized_header.body_ = data.substr(current_position, current_position + content_length);
+        return serialized_header;
     =}
 
     // this reaction transforms a physical action into a logical reaction
-    reaction (new_event) -> clock.event {=
-        clock.event.set(new_event.get());
+    reaction (new_event) -> event {=
+        event.set(new_event.get());
     =}
 
     // main starts receive thread
@@ -125,7 +115,7 @@ main reactor Networking {
 
                 // handleing the endpoints
                 if (header.method_ == "POST" and header.endpoint_ == "/list") {
-                    //body_res = clock->print_events();
+                    body_res = events;
                 } else if( header.method_ == "POST" and header.endpoint_ == "/stop") {
                     auto mpc_exit_code = system("mpc next");
                     body_res = "STOPING WITH " + std::to_string(mpc_exit_code);
@@ -134,8 +124,9 @@ main reactor Networking {
 
                     std::size_t colon_pos = header.body_.find(";");
                     serialized_event.message_ = header.body_.substr(0, colon_pos);
-                    serialized_event.time_stamp_ = static_cast<unsigned int>(
-                        std::stoi(header.body_.substr(colon_pos + 1, header.body_.size() - 2)));
+                    std::string time_stamp = header.body_.substr(colon_pos + 1, header.body_.size() - 2);
+                    std::cout  << time_stamp << std::endl;
+                    serialized_event.time_stamp_ = static_cast<unsigned int>(std::stoi(time_stamp));
 
                     new_event.schedule(serialized_event, 0ms);
                 }else {
@@ -147,6 +138,11 @@ main reactor Networking {
             }
         });
     =}
+    reaction (updated_events) {=
+        events  = *updated_events.get();
+        std::cout << "got new events:" << events << std::endl;
+    =}
+
 
     reaction ( shutdown ) {=
         thread.join();
