@@ -1,3 +1,12 @@
+/*
+* This is a minimal example of an alarmclock implemeted using the 
+* features lingua franca supplies.
+* 
+* This is just an extract and simplification from the main project
+* which you can find here: https://github.com/revol-xut/lf-alarm-clock
+*
+* Author: Tassilo Tanneberer <tassilo.tanneberger@tu-dresden.de>
+*/
 
 #ifndef SHARED_HEADER_INCLUDE_GUARD
 #define SHARED_HEADER_INCLUDE_GUARD
@@ -10,7 +19,7 @@
 
 struct Event {
     std::string message_;
-    unsigned int time_stamp_;
+    long time_stamp_;
 };
 
 constexpr const char* kMusicDir = "/home/revol-xut/music/AlarmClock/";

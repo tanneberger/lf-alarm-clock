@@ -130,9 +130,10 @@ reactor Clock {
     =}
 
     // state needs to be saved to file
-    reaction (shutdown, maintance) {=
+    reaction (shutdown, maintance) -> event_dump {=
         remove_events();
         save();
+        event_dump.set(events);
     =}
 
     method remove_events() {=
