@@ -4,7 +4,7 @@
 * 
 * This is just an extract and simplification from the main project
 * which you can find here: https://github.com/revol-xut/lf-alarm-clock
-* 
+ 
 * This file contains the networking implementation it is really just an
 * simple socket application which parses simple http headers and respondes
 * in text/plain
@@ -30,10 +30,10 @@ reactor Network {
     // variables for the receive thread
     state running: bool(true);
     state thread: {= std::thread =}; // receive thread
-    state events: {= std::vector =}; // copy
+    state events: {= std::vector<Event> =}; // copy
 
     input terminate: void;
-    input updated_events: {= std::vector =};
+    input updated_events: {= std::vector<Event> =};
 
     output event: {= Event =}; // event which will be added to the clock
 
@@ -45,25 +45,32 @@ reactor Network {
     // main starts receive thread
     reaction (startup) -> new_event {=
         std::cout << "Starting Alarmclock Reactor!\n" << std::endl;
-        constexpr const char* kResponseHeader = "HTTP/1.0 200 OK\nContent-Type: text/plain\n\n";
 
         thread = std::thread([&]{
             crow::SimpleApp app;
-            CROW_ROUTE(app, "/list") ([events]{
-                    crow::json::wvalue x;
-                    x["events"] = std::vector<crow::json::wvalue>();
-                    std::size_t index = 0;
-                    for (const Event& event : events ){
-                        crow::json::wvalue json_event;
-                        json_event["date"] = 
-                        json_event["message"] = event.message_;
-                        x["events"].push_back(json_event);
+            CROW_ROUTE(app, "/list") ([&]{
+                    auto unix_to_human_readable = [](unsigned int time_stamp){
+                        using Clock = std::chrono::high_resolution_clock;
+                        using TimePoint = std::chrono::time_point<Clock>;
+                        const Clock::duration duration_time_stamp = std::chrono::seconds(time_stamp);
+                        const TimePoint chrono_time_point(duration_time_stamp);
+                        std::time_t end_time = std::chrono::system_clock::to_time_t(chrono_time_point);
+                        std::string return_string(std::ctime(&end_time));
+                        return return_string.substr(0, return_string.size() - 2);
                     };
 
-                    return x;
+                    crow::json::wvalue response;
+                    for (const Event& event : events ){
+                        crow::json::wvalue json_event;
+                        json_event["date"] = std::move(unix_to_human_readable(event.time_stamp_));
+                        json_event["message"] = event.message_;
+
+                        response[std::to_string(event.time_stamp_)] = std::move(json_event);
+                    };
+                    return crow::response(x);
             });
 
-            CROW_ROUTE(app, "/add_event").methods("POST"_method)
+            CROW_ROUTE(app, "/add_event_timestamp").methods("POST"_method)
             ([&new_event](const crow::request& req){
                 auto json_body = crow::json::load(req.body);
                 if (!json_body) {
@@ -75,19 +82,17 @@ reactor Network {
                     static_cast<unsigned int>(json_body["time_stamp"].u())
                 };
                 new_event.schedule(serialized_event, 0ms);
-                
                 crow::json::wvalue response;
                 response["success"] = true;
                 return crow::response(response);
             });
-            app.port(8680).run();
 
+            app.port(kPort).multithreaded().run();
         });
     =}
     reaction (updated_events) {=
         events  = std::move(*updated_events.get());
     =}
-
 
     reaction ( shutdown ) {=
         thread.join();

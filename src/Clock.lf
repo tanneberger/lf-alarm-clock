@@ -81,7 +81,6 @@ reactor Clock {
     // reaction that appends elements
     reaction (event) -> trigger.input_event, event_dump {=
         if (event.is_present() and not time_over(*event.get())){
-            std::cout << "Adding event to event pipeline\n" << std::endl;
             trigger.input_event.set(*event.get());
             events.push_back(*event.get());
             event_dump.set(events);
@@ -162,27 +161,6 @@ reactor Clock {
         }
 
         file.close();
-    =}
-
-    // returns a formatted string of all the events in an human readable format
-    const method print_events(): {=std::string=} {=
-        std::string return_value;
-
-        auto unix_to_human_readable = [](unsigned int time_stamp){
-            using Clock = std::chrono::high_resolution_clock;
-            using TimePoint = std::chrono::time_point<Clock>;
-            
-            const Clock::duration duration_time_stamp = std::chrono::seconds(time_stamp);
-            const TimePoint chrono_time_point(duration_time_stamp);
-            std::time_t end_time = std::chrono::system_clock::to_time_t(chrono_time_point);
-            return std::ctime(&end_time);
-        };
-
-        for (const Event& event: events) {
-            return_value += event.message_ + ";" + unix_to_human_readable(event.time_stamp_) + "\n";
-        };
-
-        return return_value;
     =}
 }
 
