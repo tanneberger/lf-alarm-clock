@@ -30,53 +30,12 @@ reactor Network {
     // variables for the receive thread
     state running: bool(true);
     state thread: {= std::thread =}; // receive thread
-    state events: {= std::string =}; // copy
+    state events: {= std::vector =}; // copy
 
     input terminate: void;
-    input updated_events: {= std::string =};
+    input updated_events: {= std::vector =};
 
     output event: {= Event =}; // event which will be added to the clock
-
-    // method which parsed the http header
-    method response(raw_data: {= std::array<char, 4096>& =}): {= ParsedHeader =} {=
-        const std::string kContentLenght = "Content-Length";
-        std::string data(raw_data.data(), 4096);
-        std::string header, str_iterator, body;
-        std::size_t current_position = 0;
-        std::size_t content_length = 0;
-        ParsedHeader serialized_header;
-
-
-        // start parsing the http header
-        auto index_method = data.find(" ");
-        serialized_header.method_ = data.substr(0, index_method);
-
-        auto index_endpoint = data.find(" ");
-        serialized_header.endpoint_ = data.substr(index_method + 1, index_method + index_endpoint - 3);
-        serialized_header.endpoint_.erase(std::remove(
-                serialized_header.endpoint_.begin(), 
-                serialized_header.endpoint_.end(), ' '),
-                serialized_header.endpoint_.end());
-
-        // this jumps to the beginning of the body line by line
-        std::istringstream iss(data);
-        // iterates over the lines in the http header
-        for (std::string line; std::getline(iss, line); ){
-            current_position += line.size();
-            if(line.empty()) {
-                break;
-            }else if( line.substr(0, kContentLenght.size()) == kContentLenght ){
-                auto pos = line.find(" ");
-                content_length = std::stoi(line.substr(pos + 1, line.size()));
-                current_position += 8;
-                break;
-            }
-        }
-
-        // concatenates the body together2b7cecb842935c84a3a3264769ee5ece48c8ea79
-        serialized_header.body_ = data.substr(current_position, current_position + content_length);
-        return serialized_header;
-    =}
 
     // this reaction transforms a physical action into a logical reaction
     reaction (new_event) -> event {=
@@ -89,57 +48,44 @@ reactor Network {
         constexpr const char* kResponseHeader = "HTTP/1.0 200 OK\nContent-Type: text/plain\n\n";
 
         thread = std::thread([&]{
-            // initializing network objects from beast boost
-            boost::asio::ip::tcp::endpoint ep(boost::asio::ip::address_v4::any(), kPort);
-            boost::asio::io_service ios;
-            boost::asio::ip::tcp::acceptor acceptor(ios, ep.protocol());
+            crow::SimpleApp app;
+            CROW_ROUTE(app, "/list") ([events]{
+                    crow::json::wvalue x;
+                    x["events"] = std::vector<crow::json::wvalue>();
+                    std::size_t index = 0;
+                    for (const Event& event : events ){
+                        crow::json::wvalue json_event;
+                        json_event["date"] = 
+                        json_event["message"] = event.message_;
+                        x["events"].push_back(json_event);
+                    };
 
-            // binds socket to address
-            acceptor.bind(ep);
-            acceptor.listen(kBackLog);
-            boost::asio::ip::tcp::socket sock(ios);
- 
-            // request and response buffer
-            std::array<char, 4096> data;
-            std::string body_res;
-            Event serialized_event {};
+                    return x;
+            });
 
-            std::cout << "Start receiving thread\n" << std::endl;
-            while (running){
-                // accepts new connection
-                acceptor.accept(sock); 
-                // reads data into buffer
-                sock.read_some(boost::asio::buffer(data));
-                auto header = response(data);
-
-                std::cout << "Request:" << header.method_ << header.endpoint_ << header.body_ << std::endl;
-
-                // handleing the endpoints
-                if (header.method_ == "POST" and header.endpoint_ == "/list") {
-                    body_res = events;
-                } else if( header.method_ == "POST" and header.endpoint_ == "/stop") {
-                    auto mpc_exit_code = system("mpc next");
-                    body_res = "STOPING WITH " + std::to_string(mpc_exit_code);
-                } else if( header.method_ == "POST" and header.endpoint_ == "/add") {
-                    body_res = "ADDING";
-
-                    std::size_t colon_pos = header.body_.find(";");
-                    serialized_event.message_ = header.body_.substr(0, colon_pos);
-                    std::string time_stamp = header.body_.substr(colon_pos + 1, header.body_.size() - 2);
-                    serialized_event.time_stamp_ = static_cast<unsigned int>(std::stoi(time_stamp));
-
-                    new_event.schedule(serialized_event, 0ms);
-                }else {
-                    body_res = "NO VALID ENDPOINT";
+            CROW_ROUTE(app, "/add_event").methods("POST"_method)
+            ([&new_event](const crow::request& req){
+                auto json_body = crow::json::load(req.body);
+                if (!json_body) {
+                    return crow::response(400);
                 }
-                std::string composed_respone = std::string(kResponseHeader) + body_res;
-                sock.write_some(boost::asio::buffer(composed_respone));
-                sock.close();
-            }
+
+                Event serialized_event {
+                    json_body["message"].s(),
+                    static_cast<unsigned int>(json_body["time_stamp"].u())
+                };
+                new_event.schedule(serialized_event, 0ms);
+                
+                crow::json::wvalue response;
+                response["success"] = true;
+                return crow::response(response);
+            });
+            app.port(8680).run();
+
         });
     =}
     reaction (updated_events) {=
-        events  = *updated_events.get();
+        events  = std::move(*updated_events.get());
     =}
 
 

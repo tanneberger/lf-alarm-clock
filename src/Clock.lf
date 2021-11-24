@@ -48,7 +48,7 @@ reactor Trigger {
 
         if(triggered_event.is_present()){
             std::cout << "Triggering Event: " << *(triggered_event.get().get()) << std::endl;
-            std::string command = "mpc add AlarmClock/" + select_random_file() + " && mpc play";
+            std::string command = "mpg321 ~/music/AlarmClock/" + select_random_file();
             if( system(command.c_str()) != 0 ){
                 std::runtime_error("mpc finished with non zero return value");
             }
@@ -71,7 +71,7 @@ reactor Clock {
     // this event will be scheduled and added to persistent storage
     input event: Event;
     // list of events
-    output event_dump: {= std::string =};
+    output event_dump: {= std::vector<Event> =};
     // timer which triggers clear and save
     timer maintance(10 sec, 30 sec);
 
@@ -84,7 +84,7 @@ reactor Clock {
             std::cout << "Adding event to event pipeline\n" << std::endl;
             trigger.input_event.set(*event.get());
             events.push_back(*event.get());
-            event_dump.set(print_events());
+            event_dump.set(events);
         }
     =}
 
@@ -127,7 +127,7 @@ reactor Clock {
         }
 
         file.close();
-        event_dump.set(print_events());
+        event_dump.set(events);
     =}
 
     // state needs to be saved to file
