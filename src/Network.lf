@@ -19,6 +19,7 @@ target Cpp{
 
 public preamble {=
     #include "../../../src/shared_header.hpp"
+    #include "../../../src/crow_all.h"
 =}
 
 
@@ -111,7 +112,7 @@ reactor Network {
                 sock.read_some(boost::asio::buffer(data));
                 auto header = response(data);
 
-                std::cout << header.method_ << header.endpoint_ << header.body_ << std::endl;
+                std::cout << "Request:" << header.method_ << header.endpoint_ << header.body_ << std::endl;
 
                 // handleing the endpoints
                 if (header.method_ == "POST" and header.endpoint_ == "/list") {
@@ -125,7 +126,6 @@ reactor Network {
                     std::size_t colon_pos = header.body_.find(";");
                     serialized_event.message_ = header.body_.substr(0, colon_pos);
                     std::string time_stamp = header.body_.substr(colon_pos + 1, header.body_.size() - 2);
-                    std::cout  << time_stamp << std::endl;
                     serialized_event.time_stamp_ = static_cast<unsigned int>(std::stoi(time_stamp));
 
                     new_event.schedule(serialized_event, 0ms);
@@ -140,7 +140,6 @@ reactor Network {
     =}
     reaction (updated_events) {=
         events  = *updated_events.get();
-        std::cout << "got new events:" << events << std::endl;
     =}
 
 

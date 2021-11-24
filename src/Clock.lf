@@ -60,10 +60,9 @@ reactor Clock {
     // function which is used to check if a given event has already past
     private preamble {=
         auto time_over(const Event& event) noexcept -> bool {
-            auto unix_time = (event.time_stamp_);
             const auto p1 = std::chrono::system_clock::now();
             auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-            return current_time > unix_time;
+            return current_time > event.time_stamp_;
         }
     =}
 
@@ -81,10 +80,10 @@ reactor Clock {
 
     // reaction that appends elements
     reaction (event) -> trigger.input_event, event_dump {=
-        if (event.is_present() ){
-            auto extracted = event.get().get();
+        if (event.is_present() and not time_over(*event.get())){
             std::cout << "Adding event to event pipeline\n" << std::endl;
-            trigger.input_event.set(*extracted);
+            trigger.input_event.set(*event.get());
+            events.push_back(*event.get());
             event_dump.set(print_events());
         }
     =}
