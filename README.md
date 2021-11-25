@@ -10,7 +10,7 @@ A small and tiny alarmclock which is written using the scheduling and time featu
 **Dependencies:** jdk11, boost, mpg321
 
 ```bash
-    $ lfc ./src/Networking.lf
+    $ lfc ./src/AlarmClock.lf
 ```
 
 ## Endpoints
@@ -18,7 +18,7 @@ A small and tiny alarmclock which is written using the scheduling and time featu
 ### /list **GET**
 Returns a list of upcoming events.
 
-```
+```json
     "timestamp": {
         "date": str (human readable)
         "message": str
@@ -29,7 +29,7 @@ Returns a list of upcoming events.
 ### /stop **GET**
 Stops the currently playing alarm sound.
 
-```
+```json
 {
     "success": "exit code" // 0 means successfull
 }
@@ -39,14 +39,14 @@ Stops the currently playing alarm sound.
 Will schedule your alarmclock for the given timestamp
 
 Request:
-```
+```json
 {
     "message": str,
     "time_stamp": int
 }
 ```
 Response:
-```
+```json
 {
     "success": true
 }
