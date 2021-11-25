@@ -20,7 +20,12 @@ target Cpp{
 // there needs to be a better solution to import those files
 public preamble {=
     #include "../../../src/shared_header.hpp"
-    #include "../../../src/crow_all.h"
+    #include <crow/app.h>
+    #include <crow/http_server.h>
+    #include <crow/http_request.h>
+    #include <crow/http_response.h>
+    #include <crow/json.h>
+    //#include "../../../src/crow_all.h"
 =}
 
 reactor Network {
