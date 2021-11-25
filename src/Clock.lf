@@ -18,12 +18,11 @@ public preamble {=
     #include "../../../src/shared_header.hpp"
 =}
 
-
 reactor Trigger {
-    input stop: void;
     input input_event: {=Event=};
     logical action triggered_event: {=std::string=};
 
+    //the input_event will scheduled
     reaction (input_event) -> triggered_event {=
         if(input_event.is_present()) {
             auto extracted = input_event.get().get();
@@ -36,6 +35,7 @@ reactor Trigger {
         }
     =}
 
+    // reaction which will be triggered when a event is due 
     reaction(triggered_event) {=
         auto select_random_file = []{
             std::vector<std::string> files;
@@ -46,6 +46,7 @@ reactor Trigger {
             return files[rand() % files.size()];
         };
 
+        // takes a random audio file and playes it with mpg321
         if(triggered_event.is_present()){
             std::cout << "Triggering Event: " << *(triggered_event.get().get()) << std::endl;
             std::string command = "mpg321 ~/music/AlarmClock/" + select_random_file();
@@ -78,7 +79,8 @@ reactor Clock {
     // persistant storage
     state events: std::vector<Event>();
 
-    // reaction that appends elements
+    // reaction that appends new events which will be scheduled
+    // the newtwork reactor is updated
     reaction (event) -> trigger.input_event, event_dump {=
         if (event.is_present() and not time_over(*event.get())){
             trigger.input_event.set(*event.get());

@@ -17,24 +17,21 @@ target Cpp{
     keepalive: true
 };
 
+// there needs to be a better solution to import those files
 public preamble {=
     #include "../../../src/shared_header.hpp"
     #include "../../../src/crow_all.h"
 =}
-
 
 reactor Network {
     // physical event which is triggered by receiving a request
     physical action new_event: {= Event =};
 
     // variables for the receive thread
-    state running: bool(true);
     state thread: {= std::thread =}; // receive thread
     state events: {= std::vector<Event> =}; // copy
 
-    input terminate: void;
     input updated_events: {= std::vector<Event> =};
-
     output event: {= Event =}; // event which will be added to the clock
 
     // this reaction transforms a physical action into a logical reaction
@@ -49,25 +46,26 @@ reactor Network {
 
             // returns json of all the upcoming events
             CROW_ROUTE(app, "/list") ([&]{
-                    auto unix_to_human_readable = [](unsigned int time_stamp){
-                        using Clock = std::chrono::high_resolution_clock;
-                        using TimePoint = std::chrono::time_point<Clock>;
-                        const Clock::duration duration_time_stamp = std::chrono::seconds(time_stamp);
-                        const TimePoint chrono_time_point(duration_time_stamp);
-                        std::time_t end_time = std::chrono::system_clock::to_time_t(chrono_time_point);
-                        std::string return_string(std::ctime(&end_time));
-                        return return_string.substr(0, return_string.size() - 2);
-                    };
+                // function converts unix timestamp to human readable datetime string
+                auto unix_to_human_readable = [](unsigned int time_stamp){
+                    using Clock = std::chrono::high_resolution_clock;
+                    using TimePoint = std::chrono::time_point<Clock>;
+                    const Clock::duration duration_time_stamp = std::chrono::seconds(time_stamp);
+                    const TimePoint chrono_time_point(duration_time_stamp);
+                    std::time_t end_time = std::chrono::system_clock::to_time_t(chrono_time_point);
+                    std::string return_string(std::ctime(&end_time));
+                    return return_string.substr(0, return_string.size() - 2);
+                };
 
-                    crow::json::wvalue response;
-                    for (const Event& event : events ){
-                        crow::json::wvalue json_event;
-                        json_event["date"] = std::move(unix_to_human_readable(event.time_stamp_));
-                        json_event["message"] = event.message_;
+                crow::json::wvalue response;
+                for (const Event& event : events ){
+                    crow::json::wvalue json_event;
+                    json_event["date"] = std::move(unix_to_human_readable(event.time_stamp_));
+                    json_event["message"] = event.message_;
 
-                        response[std::to_string(event.time_stamp_)] = std::move(json_event);
-                    };
-                    return crow::response(response);
+                    response[std::to_string(event.time_stamp_)] = std::move(json_event);
+                };
+                return crow::response(response);
             });
 
             // adds new event by unix time stamp
@@ -78,6 +76,7 @@ reactor Network {
                     return crow::response(400);
                 }
 
+                // maybe add extra input validation
                 Event serialized_event {
                     json_body["message"].s(),
                     static_cast<unsigned int>(json_body["time_stamp"].u())
@@ -99,6 +98,7 @@ reactor Network {
                     return crow::response(400);
                 }
 
+                // calculates relative time in seconds
                 if(json_body.has("days")){
                     relativ_time += 24 * 60 * 60 * json_body["days"].u();
                 }
@@ -112,8 +112,8 @@ reactor Network {
                     relativ_time += json_body["seconds"].u();
                 }
 
-                const auto p1 = std::chrono::system_clock::now();
-                auto current_time = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+                const auto now = std::chrono::system_clock::now();
+                auto current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
                 Event serialized_event {
                     json_body["message"].s(),
@@ -130,6 +130,13 @@ reactor Network {
             // will set the timer in the text 24 hours
             CROW_ROUTE(app, "/add_event_time").methods("POST"_method)
             ([&new_event](const crow::request& req){
+                // just % doesn't work because it is the remainder operator 
+                // and does not behave like modulo for negative numbers
+                auto mod = [](int a, int b) {
+                    int r = a % b;
+                    return r < 0 ? r + b : r;
+                };
+
                 auto relativ_time = 0l;
                 auto json_body = crow::json::load(req.body);
                 if (!json_body) {
@@ -140,15 +147,15 @@ reactor Network {
                 time_t time_struct = time(NULL);
                 struct tm *formatted_time = localtime(&time_struct);
 
-
+                // calculating time differences and turning them into seconds for the time_stamp
                 if(json_body.has("hour")){
-                    relativ_time += 60 * 60 * ((json_body["hour"].i() - formatted_time->tm_hour) % 24);
+                    relativ_time += 60 * 60 * mod(json_body["hour"].i() - formatted_time->tm_hour - 1, 24);
                 }
                 if(json_body.has("minute")){
-                    relativ_time += 60 * ((json_body["minute"].i() - formatted_time->tm_min) % 60);
+                    relativ_time += 60 * mod(json_body["minute"].i() - formatted_time->tm_min - 1, 60);
                 }
                 if(json_body.has("second")){
-                    relativ_time += ( json_body["second"].u() - formatted_time->tm_sec) % 60;
+                    relativ_time += mod(json_body["second"].u() - formatted_time->tm_sec - 1, 60);
                 }
 
                 Event serialized_event {
@@ -183,9 +190,4 @@ reactor Network {
     reaction ( shutdown ) {=
         thread.join();
     =}
-
-    reaction (terminate) {=
-        running = false;
-    =}
-
 }
