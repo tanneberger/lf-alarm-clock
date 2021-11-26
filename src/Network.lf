@@ -19,7 +19,7 @@ target Cpp{
 
 // there needs to be a better solution to import those files
 public preamble {=
-    #include "../../../src/shared_header.hpp"
+    #include "shared_header.hpp"
     #include <crow/app.h>
     #include <crow/http_server.h>
     #include <crow/http_request.h>
