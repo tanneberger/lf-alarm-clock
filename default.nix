@@ -40,6 +40,7 @@ lfc = stdenv.mkDerivation {
   };
 };
 
+# downloading the cpp runtime
 cpp-runtime = fetchFromGitHub {
   owner = "lf-lang";
   repo = "reactor-cpp";
