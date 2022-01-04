@@ -5,6 +5,11 @@ A small and tiny alarmclock which is written using the scheduling and time featu
 
 **Contact:** <revol-xut@protonmail.com>
 
+## Project
+
+![Programm Structure](./images/entire_program.png)
+
+
 ## Building
 
 **Dependencies:** jdk11, boost, mpg321

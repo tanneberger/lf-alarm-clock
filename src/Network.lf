@@ -30,14 +30,15 @@ public preamble {=
 
 reactor Network {
     // physical event which is triggered by receiving a request
-    physical action new_event: {= Event =};
+    physical action new_event: Event;
 
     // variables for the receive thread
-    state thread: {= std::thread =}; // receive thread
-    state events: {= std::vector<Event> =}; // copy
+    state thread: std::thread; // receive thread
+    state events: std::vector<Event>; // copy
 
-    input updated_events: {= std::vector<Event> =};
-    output event: {= Event =}; // event which will be added to the clock
+    input updated_events: std::vector<Event>;
+    output event: Event; // event which will be added to the clock
+    output event_index: std::size_t; // index of element which will be removed
 
     // this reaction transforms a physical action into a logical reaction
     reaction (new_event) -> event {=
@@ -181,6 +182,20 @@ reactor Network {
                 int status = system("kill $(pidof mpg321)");
                 crow::json::wvalue response;
                 response["success"] = status;
+                return crow::response(response);
+            });
+
+            CROW_ROUTE(app, "/remove").methods("POST"_method)
+            ([&new_event](const crow::request& req){
+                auto json_body = crow::json::load(req.body);
+                if (!json_body) {
+                    return crow::response(400);
+                }
+
+                std::size_t index = json_body["index"].u();
+
+                crow::json::wvalue response;
+                response["success"] = true;
                 return crow::response(response);
             });
 
