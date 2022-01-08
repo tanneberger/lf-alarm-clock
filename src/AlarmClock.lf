@@ -29,7 +29,7 @@ main reactor AlarmClock {
 
     // additon of a new event
     network.event -> clock.event;
-    network.delete_index -> clock.remove_by_id;
+    network.delete_index -> clock.cancel_by_index;
     clock.event_dump -> network.updated_events;
 
     reaction (startup) {=

@@ -93,7 +93,7 @@ reactor Clock {
     trigger = new Trigger();
     // this event will be scheduled and added to persistent storage
     input event: Event;
-    input remove_by_id: std::size_t;
+    input cancel_by_index: std::size_t;
     // list of events
     output event_dump: {= std::vector<Event> =};
     // timer which triggers clear and save
@@ -161,9 +161,9 @@ reactor Clock {
         event_dump.set(events);
     =}
 
-    reaction (remove_by_id) -> trigger.input_interrupt, event_dump {=
-        if(remove_by_id.is_present()) {
-            std::size_t index = *(remove_by_id.get().get());
+    reaction (cancel_by_index) -> trigger.input_interrupt, event_dump {=
+        if(cancel_by_index.is_present()) {
+            std::size_t index = *(cancel_by_index.get().get());
             
             if( index < events.size()){
                 auto tag = events.at(index).time_stamp_;
