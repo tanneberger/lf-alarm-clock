@@ -20,12 +20,16 @@ target Cpp{
 import Network from "./Network.lf";
 import Clock from "./Clock.lf";
 
+#import Network.lf;
+#import Clock.lf;
+
 main reactor AlarmClock {
     clock = new Clock();
     network = new Network();
 
     // additon of a new event
     network.event -> clock.event;
+    network.delete_index -> clock.remove_by_id;
     clock.event_dump -> network.updated_events;
 
     reaction (startup) {=

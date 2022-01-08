@@ -25,12 +25,12 @@ public preamble {=
     #include <crow/http_request.h>
     #include <crow/http_response.h>
     #include <crow/json.h>
-    //#include "../../../src/crow_all.h"
 =}
 
 reactor Network {
     // physical event which is triggered by receiving a request
     physical action new_event: Event;
+    physical action delete_request: std::size_t;
 
     // variables for the receive thread
     state thread: std::thread; // receive thread
@@ -38,15 +38,23 @@ reactor Network {
 
     input updated_events: std::vector<Event>;
     output event: Event; // event which will be added to the clock
-    output event_index: std::size_t; // index of element which will be removed
+  Netment which will be removed
 
     // this reaction transforms a physical action into a logical reaction
     reaction (new_event) -> event {=
-        event.set(new_event.get());
+        if(new_event.is_present()){
+            event.set(new_event.get());
+        }
     =}
 
+    reaction (delete_request) -> delete_index {=
+        if(delete_request.is_present()){
+            delete_index.set(delete_request.get());
+        }
+    =} 
+
     // main starts receive thread
-    reaction (startup) -> new_event {=
+    reaction (startup) -> delete_request, new_event{=
         thread = std::thread([&] {
             crow::SimpleApp app;
 
@@ -186,13 +194,14 @@ reactor Network {
             });
 
             CROW_ROUTE(app, "/remove").methods("POST"_method)
-            ([&new_event](const crow::request& req){
+            ([&delete_request](const crow::request& req){
                 auto json_body = crow::json::load(req.body);
                 if (!json_body) {
                     return crow::response(400);
                 }
 
                 std::size_t index = json_body["index"].u();
+                delete_request.schedule(index, 0s);
 
                 crow::json::wvalue response;
                 response["success"] = true;

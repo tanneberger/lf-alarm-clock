@@ -19,19 +19,36 @@ public preamble {=
 =}
 
 reactor Trigger {
+    private preamble {=
+        auto convert_to_relative = [](long time_stamp){
+            const auto t = std::chrono::system_clock::now();
+            std::chrono::seconds desired_time = std::chrono::seconds(time_stamp);
+            std::chrono::seconds current_time = 
+                    std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
+            std::chrono::seconds delta_t = desired_time - current_time;
+            return delta_t;
+        };
+    =}
+
     input input_event: {=Event=};
+    input input_interrupt: long;
+    logical action interrupt;
     logical action triggered_event: {=std::string=};
+    state ignore_flag: bool;
 
     //the input_event will scheduled
     reaction (input_event) -> triggered_event {=
         if(input_event.is_present()) {
             auto extracted = input_event.get().get();
-            const auto t = std::chrono::system_clock::now();
-            std::chrono::seconds desired_time = std::chrono::seconds(extracted->time_stamp_);
-            std::chrono::seconds current_time = 
-                    std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch());
-            std::chrono::seconds delta_t = desired_time - current_time;
+            auto delta_t = convert_to_relative(extracted->time_stamp_);
             triggered_event.schedule(extracted->message_, delta_t);
+        }
+    =}
+
+    reaction (input_interrupt) -> interrupt {=
+        if(input_interrupt.is_present()){
+            auto delta_t = convert_to_relative(*(input_interrupt.get().get()));
+            interrupt.schedule(delta_t);
         }
     =}
 
@@ -47,13 +64,18 @@ reactor Trigger {
         };
 
         // takes a random audio file and playes it with mpg321
-        if(triggered_event.is_present()){
+        if(triggered_event.is_present() and not ignore_flag){
             std::cout << "Triggering Event: " << *(triggered_event.get().get()) << std::endl;
             std::string command = "mpg321 ~/music/AlarmClock/" + select_random_file();
             if( system(command.c_str()) != 0 ){
                 std::runtime_error("mpc finished with non zero return value");
             }
         }
+        ignore_flag = false;
+    =}
+
+    reaction (interrupt) {=
+        ignore_flag = true;
     =}
 }
 
@@ -71,6 +93,7 @@ reactor Clock {
     trigger = new Trigger();
     // this event will be scheduled and added to persistent storage
     input event: Event;
+    input remove_by_id: std::size_t;
     // list of events
     output event_dump: {= std::vector<Event> =};
     // timer which triggers clear and save
@@ -136,6 +159,20 @@ reactor Clock {
         remove_events();
         save();
         event_dump.set(events);
+    =}
+
+    reaction (remove_by_id) -> trigger.input_interrupt, event_dump {=
+        if(remove_by_id.is_present()) {
+            std::size_t index = *(remove_by_id.get().get());
+            
+            if( index < events.size()){
+                auto tag = events.at(index).time_stamp_;
+                trigger.input_interrupt.set(tag);
+                events.erase(events.begin() + index);
+                event_dump.set(events);
+            }
+
+        }
     =}
 
     method remove_events() {=
