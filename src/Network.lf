@@ -38,7 +38,7 @@ reactor Network {
 
     input updated_events: std::vector<Event>;
     output event: Event; // event which will be added to the clock
-  Netment which will be removed
+    output delete_index: std::size_t;
 
     // this reaction transforms a physical action into a logical reaction
     reaction (new_event) -> event {=
