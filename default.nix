@@ -1,5 +1,9 @@
 {stdenv, pkgs, lib, fetchFromGitHub,...}:
 let
+
+pkgs = import <nixpkgs> { crossSystem = { config = "aarch64-linux"; }; };
+#pkgs = (import <nixpkgs> {}).pkgsCross.aarch64-multiplatform;
+
 lfc = stdenv.mkDerivation {
   pname = "lfc";
   version = "0.1.0";
@@ -41,25 +45,58 @@ lfc = stdenv.mkDerivation {
 };
 
 # downloading the cpp runtime
-cpp-runtime = fetchFromGitHub {
-  owner = "lf-lang";
-  repo = "reactor-cpp";
-  rev = "007143225dbc198a5fee233ce125c3584a9541d8";
-  sha256 = "sha256-wiBTJ4jSzoAu/Tg2cMqMWv7qZD29F+ysDOOF6F/DLJM=";
+cpp-runtime = stdenv.mkDerivation {
+  name = "cpp-lingua-franca-runtime";
+
+  src = fetchFromGitHub {
+    owner = "lf-lang";
+    repo = "reactor-cpp";
+    rev = "007143225dbc198a5fee233ce125c3584a9541d8";
+    sha256 = "sha256-wiBTJ4jSzoAu/Tg2cMqMWv7qZD29F+ysDOOF6F/DLJM=";
+  };
+
+  nativeBuildInputs = with pkgs; [ cmake gcc ];
+  configurePhase = ''
+    echo "Configuration"
+  '';
+
+  buildPhase = ''
+    mkdir -p build
+    cd build
+    cmake .. -DCMAKE_INSTALL_PREFIX=./
+    make install
+  '';
+  
+  installPhase = ''
+    cp -r ./ $out/
+  '';
+
+  fixupPhase = ''
+    echo "FIXUP PHASE SKIP"
+  '';
 };
+
+
 
 in
   stdenv.mkDerivation {
     name = "alarm-clock";
     version = "0.0.1";
 
+    #src = ./.;
+    #src = fetchGit {
+    #  url = "https://github.com/revol-xut/lf-alarm-clock";
+    #  sha256 = "sha256-aAHObkDtHHQZqS0vF30AxDRRSRnK742oXX0IOxYpeDo=";
+    #  fetchSubmodules = true;
+    #};
+
     src = fetchFromGitHub {
       owner = "revol-xut";
       repo = "lf-alarm-clock";
-      rev = "2b7cecb842935c84a3a3264769ee5ece48c8ea79";
-      sha256 = "sha256-zsahCcGmIg685rZjoBZ5U/QM4EyeXEWt31jpDTrNZp8=";
+      rev = "8113a2c84db3d960d56455a91b288e8e7c584964";
+      sha256 = "sha256-WHGSlqD5CUl4JhILZeiwB0/zXP+h6rsOuEvKzn5SqFA=";
+      fetchSubmodules = true;
     };
-    #src = ./.;
 
     buildInputs = with pkgs; [ lfc which gcc cmake git boost ];
 
@@ -69,11 +106,15 @@ in
 
     buildPhase = ''
       echo "Starting compiling"
-      ${lfc}/bin/lfc src/Clock.lf src/Networking.lf
+      mkdir -p include/reactor-cpp/
+      ls -a ${cpp-runtime}
+      cp -r ${cpp-runtime}/include/reactor-cpp/* include/reactor-cpp/
+      ${lfc}/bin/lfc --external-runtime-path ${cpp-runtime}/ src/AlarmClock.lf
     '';
 
     installPhase = ''
-      cp bin/Networking $out/
+      mkdir -p $out/bin
+      cp -r ./bin $out/bin
     '';
   }
 
