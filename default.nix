@@ -1,7 +1,7 @@
 {stdenv, pkgs, lib, fetchFromGitHub,...}:
 let
 
-pkgs = import <nixpkgs> { crossSystem = { config = "aarch64-linux"; }; };
+#pkgs = import <nixpkgs> { crossSystem = { config = "aarch64-linux"; }; };
 #pkgs = (import <nixpkgs> {}).pkgsCross.aarch64-multiplatform;
 
 lfc = stdenv.mkDerivation {
