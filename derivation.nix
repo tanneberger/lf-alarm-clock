@@ -104,7 +104,7 @@ in
 
     installPhase = ''
       mkdir -p $out/bin
-      cp -r ./bin $out/bin
+      cp -r ./bin/* $out/bin
     '';
   }
 
