@@ -18,6 +18,12 @@ A small and tiny alarmclock which is written using the scheduling and time featu
     $ lfc ./src/AlarmClock.lf
 ```
 
+### Cross Compiling and building with nix
+
+```bash
+    $ nix build .#packages.aarch64-linux.lf-alarm-clock
+```
+
 ## Endpoints
 
 ### /list **GET**
