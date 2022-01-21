@@ -9,6 +9,7 @@
     utils.lib.eachDefaultSystem (system: let 
       pkgs = nixpkgs.legacyPackages.${system};
       in rec {
+        checks = packages;
         packages.lf-alarm-clock = nixpkgs.legacyPackages.${system}.callPackage ./derivation.nix {};
       }
     );
