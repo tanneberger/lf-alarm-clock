@@ -1,9 +1,6 @@
 {stdenv, pkgs, lib, fetchFromGitHub,...}:
 let
 
-#pkgs = import <nixpkgs> { crossSystem = { config = "aarch64-linux"; }; };
-#pkgs = (import <nixpkgs> {}).pkgsCross.aarch64-multiplatform;
-
 lfc = stdenv.mkDerivation {
   pname = "lfc";
   version = "0.1.0";
@@ -82,13 +79,6 @@ in
   stdenv.mkDerivation {
     name = "alarm-clock";
     version = "0.0.1";
-
-    #src = ./.;
-    #src = fetchGit {
-    #  url = "https://github.com/revol-xut/lf-alarm-clock";
-    #  sha256 = "sha256-aAHObkDtHHQZqS0vF30AxDRRSRnK742oXX0IOxYpeDo=";
-    #  fetchSubmodules = true;
-    #};
 
     src = fetchFromGitHub {
       owner = "revol-xut";
