@@ -22,6 +22,10 @@ lfc = stdenv.mkDerivation {
       --replace "run_lfc_with_args" "${pkgs.jdk11_headless}/bin/java -jar $out/lib/jars/org.lflang.lfc-0.1.0-SNAPSHOT-all.jar"
   '';
 
+  buildPhase = ''
+    echo "SKIP"
+  '';
+
   installPhase = ''
     cp -r ./ $out/
     chmod +x $out/bin/lfc
@@ -48,11 +52,12 @@ cpp-runtime = stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "lf-lang";
     repo = "reactor-cpp";
-    rev = "007143225dbc198a5fee233ce125c3584a9541d8";
-    sha256 = "sha256-wiBTJ4jSzoAu/Tg2cMqMWv7qZD29F+ysDOOF6F/DLJM=";
+    rev = "f26c3786ba5e384051708f45abae5a625436dd05";
+    sha256 = "sha256-uHwh/vwInqC7RdvVJRgkrwbLzik7JjoiA5quCpYHK2g=";
   };
 
   nativeBuildInputs = with pkgs; [ cmake gcc ];
+  
   configurePhase = ''
     echo "Configuration"
   '';
@@ -60,7 +65,7 @@ cpp-runtime = stdenv.mkDerivation {
   buildPhase = ''
     mkdir -p build
     cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=./
+    cmake -DCMAKE_INSTALL_PREFIX=./ ../
     make install
   '';
   
@@ -83,7 +88,7 @@ in
     src = fetchFromGitHub {
       owner = "revol-xut";
       repo = "lf-alarm-clock";
-      rev = "8113a2c84db3d960d56455a91b288e8e7c584964";
+      rev = "93c2f97dd82406cf566e2cc4170892b577c4a0b1";
       sha256 = "sha256-WHGSlqD5CUl4JhILZeiwB0/zXP+h6rsOuEvKzn5SqFA=";
       fetchSubmodules = true;
     };
