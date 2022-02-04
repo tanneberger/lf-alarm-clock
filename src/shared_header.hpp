@@ -25,6 +25,8 @@ struct Event {
 constexpr const char* kMusicDir = "~/music/AlarmClock/";
 constexpr const char* kFile = "./alarm_clock_events.csv";
 constexpr const char* kPlayerCommand = "mpg321";
+constexpr const char* kKillCommand = "kill";
+constexpr const char* kPidofCommand = "pidof";
 
 constexpr unsigned short kPort = 8680;
 
