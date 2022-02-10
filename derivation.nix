@@ -52,17 +52,22 @@ cpp-runtime = stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "lf-lang";
     repo = "reactor-cpp";
-    rev = "f26c3786ba5e384051708f45abae5a625436dd05";
+    rev = "b1f6c773f05ebb17995cda6b45822817b8fb8136";
     sha256 = "sha256-uHwh/vwInqC7RdvVJRgkrwbLzik7JjoiA5quCpYHK2g=";
   };
 
   nativeBuildInputs = with pkgs; [ cmake gcc ];
-  
+
   configurePhase = ''
     echo "Configuration"
   '';
 
+  setPhase = ''
+    echo "skipping setphase"
+  '';
+
   buildPhase = ''
+    ls -a
     mkdir -p build
     cd build
     cmake -DCMAKE_INSTALL_PREFIX=./ ../
@@ -102,7 +107,6 @@ in
     buildPhase = ''
       echo "Starting compiling"
       mkdir -p include/reactor-cpp/
-      ls -a ${cpp-runtime}
       cp -r ${cpp-runtime}/include/reactor-cpp/* include/reactor-cpp/
       ${lfc}/bin/lfc --external-runtime-path ${cpp-runtime}/ src/AlarmClock.lf
     '';
