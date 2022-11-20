@@ -19,7 +19,7 @@
         packages.default = nixpkgs.legacyPackages.${system}.callPackage ./nix/derivation.nix { 
           reactor-cpp = reactor-cpp.packages."${system}".reactor-cpp;
         };
-        nixosModules.default = { 
+        nixosModule.default = { 
           imports  = [./nix/module.nix ]; 
         };
       }
