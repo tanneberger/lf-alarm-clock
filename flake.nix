@@ -13,14 +13,14 @@
       in
       rec {
         checks = packages;
-        packages.lf-alarm-clock = nixpkgs.legacyPackages.${system}.callPackage ./nix/derivation.nix { 
+        packages.lf-alarm-clock = nixpkgs.legacyPackages.${system}.callPackage ./nix/derivation.nix {
           reactor-cpp = reactor-cpp.packages."${system}".reactor-cpp;
         };
-        packages.default = nixpkgs.legacyPackages.${system}.callPackage ./nix/derivation.nix { 
+        packages.default = nixpkgs.legacyPackages.${system}.callPackage ./nix/derivation.nix {
           reactor-cpp = reactor-cpp.packages."${system}".reactor-cpp;
         };
-        nixosModule.default = { 
-          imports  = [./nix/module.nix ]; 
+        nixosModule.default = {
+          imports = [ ./nix/module.nix ];
         };
       }
     );
